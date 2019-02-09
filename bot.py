@@ -1,6 +1,6 @@
+from collections import deque as queue
 import socket
 import json
-import time
 
 
 class Bot:
@@ -11,11 +11,19 @@ class Bot:
         :param test:
         """
         print("=-=-= Starting trading bot! =-=-=\n")
+        # General attributes
         self.team_name = "TEAMSTOCKERS"
         self.test_mode = test
         self.order_id = 0
+
+        # Bond trading attributes
         self.fair_value_threshold = 1
         self.open_bonds = set()
+
+        # ADR Arbitrage
+        self.adr_queue = queue([], 5)
+        self.open_adrs = set()
+
         if test:
             print("=-=-= Test mode activated. Getting hello from exchange. =-=-= \n")
             self.test()
@@ -39,7 +47,7 @@ class Bot:
 
     def check_market(self):
 
-        self.send_action({"type": "add", "order_id": self.order_id,
+        """self.send_action({"type": "add", "order_id": self.order_id,
                           "symbol": "BOND", "dir": "BUY", "price": 1000 - self.fair_value_threshold,
                           "size": 50})
         self.open_bonds.add(self.order_id)
@@ -49,10 +57,11 @@ class Bot:
                           "symbol": "BOND", "dir": "SELL", "price": 1000 + self.fair_value_threshold,
                           "size": 50})
         self.open_bonds.add(self.order_id)
-        self.order_id += 1
+        self.order_id += 1"""
 
         while True:
             data = self.read_market()
+            """
             # Fair-value operations
             if data["type"] == "fill" and data["order_id"] in self.open_bonds:
                 if data["dir"] == "BUY":
@@ -63,12 +72,47 @@ class Bot:
                     self.order_id += 1
                 elif data["dir"] == "SELL":
                     self.send_action({"type": "add", "order_id": self.order_id,
-                                      "symbol": "BOND", "dir": "SELL", "price": 1000 - self.fair_value_threshold,
+                                      "symbol": "BOND", "dir": "SELL", "price": 1000 + self.fair_value_threshold,
                                       "size": data["size"]})
                     self.open_bonds.add(self.order_id)
                     self.order_id += 1
             elif data["type"] == "out" and data["order_id"] in self.open_bonds:
                 self.open_bonds.remove(data["order_id"])
+            """
+            # ADR Arbitrage
+            if data["type"] == "trade" and data["symbol"] == "VALBZ":
+                self.adr_queue.append(data["price"])
+                self.adr_price = sum(self.adr_queue) / len(self.adr_queue)
+                for open_order in self.open_adrs:
+                    self.send_action({"type": "cancel", "order_id": open_order})
+
+                self.send_action({"type": "add", "order_id": self.order_id,
+                                  "symbol": "VALE", "dir": "BUY", "price": self.adr_price - 10,
+                                  "size": 5})
+                self.open_adrs.add(self.order_id)
+                self.order_id += 1
+
+                self.send_action({"type": "add", "order_id": self.order_id,
+                                  "symbol": "VALE", "dir": "SELL", "price": self.adr_price + 10,
+                                  "size": 5})
+                self.open_adrs.add(self.order_id)
+                self.order_id += 1
+            if data["type"] == "fill" and data["order_id"] in self.open_adrs:
+                if data["dir"] == "BUY":
+                    self.send_action({"type": "add", "order_id": self.order_id,
+                                      "symbol": "VALE", "dir": "BUY", "price": self.adr_price - 10,
+                                      "size": data["size"]})
+                    self.open_adrs.add(self.order_id)
+                    self.order_id += 1
+                elif data["dir"] == "SELL":
+                    self.send_action({"type": "add", "order_id": self.order_id,
+                                      "symbol": "VALE", "dir": "SELL", "price": self.adr_price + 10,
+                                      "size": data["size"]})
+                    self.open_bonds.add(self.order_id)
+                    self.order_id += 1
+            elif data["type"] == "out" and data["order_id"] in self.open_bonds:
+                self.open_bonds.remove(data["order_id"])
+
 
     def make_connection(self, hostname, port):
         """
