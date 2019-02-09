@@ -38,24 +38,21 @@ class Bot:
 
     def check_market(self):
         # Fair-value operations
-        try:
-            while True:
-                data = self.read_market()
-                if data["type"] == "trade" and data["symbol"] == "BOND":
-                    if data["price"] <= 1000 - self.fair_value_threshold:
-                        self.send_action({"type": "add", "order_id": self.order_id,
-                                          "symbol":"BOND", "dir":"BUY", "price": data["price"],
-                                          "size": 10})
-                        self.order_id += 1
-                    elif data["price"] >= 1000 + self.fair_value_threshold:
-                        self.send_action({"type": "add", "order_id": self.order_id,
-                                          "symbol": "BOND", "dir": "SELL", "price": data["price"],
-                                          "size": 10})
-                time.sleep(1)
-        except:
-            self.test()
-
-
+        while True:
+            print("Checking market...\n")
+            data = self.read_market()
+            print("Received data: {}".format(data))
+            if data["type"] == "trade" and data["symbol"] == "BOND":
+                if data["price"] <= 1000 - self.fair_value_threshold:
+                    self.send_action({"type": "add", "order_id": self.order_id,
+                                        "symbol":"BOND", "dir":"BUY", "price": data["price"],
+                                        "size": 10})
+                    self.order_id += 1
+                elif data["price"] >= 1000 + self.fair_value_threshold:
+                    self.send_action({"type": "add", "order_id": self.order_id,
+                                        "symbol": "BOND", "dir": "SELL", "price": data["price"],
+                                        "size": 10})
+            time.sleep(1)
 
     def make_connection(self, hostname, port):
         """
