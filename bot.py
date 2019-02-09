@@ -15,6 +15,7 @@ class Bot:
         self.test_mode = test
         self.order_id = 0
         self.fair_value_threshold = 1
+        self.open_bonds = set()
         if test:
             print("=-=-= Test mode activated. Getting hello from exchange. =-=-= \n")
             self.test()
@@ -37,28 +38,37 @@ class Bot:
         print("Hello received from server: ", self.read_market())
 
     def check_market(self):
-        # Fair-value operations
+
+        self.send_action({"type": "add", "order_id": self.order_id,
+                          "symbol": "BOND", "dir": "BUY", "price": 1000 - self.fair_value_threshold,
+                          "size": 50})
+        self.open_bonds.add(self.order_id)
+        self.order_id += 1
+
+        self.send_action({"type": "add", "order_id": self.order_id,
+                          "symbol": "BOND", "dir": "SELL", "price": 1000 + self.fair_value_threshold,
+                          "size": 50})
+        self.open_bonds.add(self.order_id)
+        self.order_id += 1
+
         while True:
             data = self.read_market()
-            if data["type"] == "book" and data["symbol"] == "BOND":
-                print("Found BOND in book")
-                if "sell" in data:
-                    print("Found sell")
-                    for order in data["sell"]:
-                        if order[0] <= 1000 - self.fair_value_threshold:
-                            self.send_action({"type": "add", "order_id": self.order_id,
-                                        "symbol":"BOND", "dir":"BUY", "price": order[0],
-                                        "size": order[1]})
-                            self.order_id += 1
-                if "buy" in data:
-                    print("Found buy")
-                    for order in data["buy"]:
-                        if order[0] >= 1000 + self.fair_value_threshold:
-                            self.send_action({"type": "add", "order_id": self.order_id,
-                                        "symbol": "BOND", "dir": "SELL", "price": order[0],
-                                        "size": order[1]})
-                            self.order_id += 1
-            time.sleep(1)
+            # Fair-value operations
+            if data["type"] == "fill" and data["order_id"] in self.open_bonds:
+                if data["dir"] == "BUY":
+                    self.send_action({"type": "add", "order_id": self.order_id,
+                                      "symbol": "BOND", "dir": "BUY", "price": 1000 - self.fair_value_threshold,
+                                      "size": data["size"]})
+                    self.open_bonds.add(self.order_id)
+                    self.order_id += 1
+                elif data["dir"] == "SELL":
+                    self.send_action({"type": "add", "order_id": self.order_id,
+                                      "symbol": "BOND", "dir": "SELL", "price": 1000 - self.fair_value_threshold,
+                                      "size": data["size"]})
+                    self.open_bonds.add(self.order_id)
+                    self.order_id += 1
+            elif data["type"] == "out" and data["order_id"] in self.open_bonds:
+                self.open_bonds.remove(data["order_id"])
 
     def make_connection(self, hostname, port):
         """
@@ -94,4 +104,4 @@ class Bot:
             print("Expected JSON but got {}.".format(data))
 
 
-Bot(True)
+Bot(False)
