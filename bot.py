@@ -9,14 +9,17 @@ class Bot:
         Initialization of bot class.
         :param test:
         """
+        print("=-=-= Starting trading bot! =-=-=\n")
         self.team_name = "TEAMSTOCKERS"
         self.test_mode = test
         if test:
+            print("=-=-= Test mode activated. Getting hello from exchange. =-=-= \n")
             self.test()
         pass
 
     def test(self):
         self.make_connection("test-exch-", 25000)
+        print("=-=-= Connection made! =-=-=")
         print(self.read_market())
 
 
@@ -51,3 +54,6 @@ class Bot:
             return json.loads(data)
         except json.JSONDecodeError:
             print("Expected JSON but got {}.".format(data))
+
+
+Bot(True)
