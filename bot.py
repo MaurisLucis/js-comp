@@ -42,16 +42,20 @@ class Bot:
             print("Checking market...\n")
             data = self.read_market()
             print("Received data: {}".format(data))
-            if data["type"] == "trade" and data["symbol"] == "BOND":
-                if data["price"] <= 1000 - self.fair_value_threshold:
-                    self.send_action({"type": "add", "order_id": self.order_id,
-                                        "symbol":"BOND", "dir":"BUY", "price": data["price"],
-                                        "size": 10})
+            if data["type"] == "book" and data["symbol"] == "BOND":
+                if "sell" in data:
+                    for order in data["sell"]:
+                        if order[0] <= 1000 - self.fair_value_threshold:
+                            self.send_action({"type": "add", "order_id": self.order_id,
+                                        "symbol":"BOND", "dir":"BUY", "price": order[0],
+                                        "size": order[1]})
                     self.order_id += 1
-                elif data["price"] >= 1000 + self.fair_value_threshold:
-                    self.send_action({"type": "add", "order_id": self.order_id,
-                                        "symbol": "BOND", "dir": "SELL", "price": data["price"],
-                                        "size": 10})
+                elif "buy" in data:
+                    for order in data["buy"]:
+                        if order[0] >= 1000 + self.fair_value_threshold:
+                            self.send_action({"type": "add", "order_id": self.order_id,
+                                        "symbol": "BOND", "dir": "SELL", "price": order[0],
+                                        "size": order[1]})
             time.sleep(1)
 
     def make_connection(self, hostname, port):
