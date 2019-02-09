@@ -53,7 +53,7 @@ class Bot:
         print("Hello received from server: ", self.read_market())
 
     def check_market(self):
-        """
+
         self.send_action({"type": "add", "order_id": self.order_id,
                           "symbol": "BOND", "dir": "BUY", "price": 1000 - self.fair_value_threshold,
                           "size": 50})
@@ -65,10 +65,10 @@ class Bot:
                           "size": 50})
         self.open_bonds.add(self.order_id)
         self.order_id += 1
-        """
+
         while True:
             data = self.read_market()
-            """
+
             # Fair-value operations
             if data["type"] == "fill" and data["order_id"] in self.open_bonds:
                 if data["dir"] == "BUY":
@@ -123,7 +123,7 @@ class Bot:
                     self.order_id += 1
             elif data["type"] == "out" and data["order_id"] in self.open_bonds:
                 self.open_bonds.remove(data["order_id"])
-            """
+
             # ETF Arbitrage
             if data["type"] == "trade" and data["symbol"] in self.etf_queues:
                 stock = data["symbol"]
