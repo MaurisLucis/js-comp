@@ -1,3 +1,4 @@
+import time
 from collections import deque as queue
 import socket
 import json
@@ -46,7 +47,11 @@ class Bot:
     def launch(self):
         self.make_connection("production", 25000)
         self.hello()
-        self.check_market()
+        try:
+            self.check_market()
+        except socket.error:
+            time.sleep(1)
+            self.check_market()
 
     def hello(self):
         self.send_action({"type": "hello", "team": "TEAMSTOCKERS"})
@@ -177,7 +182,9 @@ class Bot:
         :return:
         """
         self.market = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.market.settimeout(5)
         addr = (hostname + self.team_name * self.test_mode, port)
+        print(addr)
         self.market.connect(addr)
         self.stream = self.market.makefile('rw', 1)
 
