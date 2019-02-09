@@ -21,8 +21,15 @@ class Bot:
         self.open_bonds = set()
 
         # ADR Arbitrage
-        self.adr_queue = queue([], 5)
+        self.adr_queue = queue([], 10)
         self.open_adrs = set()
+
+        # ETF Arbitrage
+        self.etf_queues = {"GS": queue([], 10),
+                           "MS": queue([], 10),
+                           "WFC": queue([], 10)}
+        self.etf_prices = {}
+        self.open_etfs = set()
 
         if test:
             print("=-=-= Test mode activated. Getting hello from exchange. =-=-= \n")
@@ -46,7 +53,7 @@ class Bot:
         print("Hello received from server: ", self.read_market())
 
     def check_market(self):
-
+        """
         self.send_action({"type": "add", "order_id": self.order_id,
                           "symbol": "BOND", "dir": "BUY", "price": 1000 - self.fair_value_threshold,
                           "size": 50})
@@ -58,10 +65,10 @@ class Bot:
                           "size": 50})
         self.open_bonds.add(self.order_id)
         self.order_id += 1
-
+        """
         while True:
             data = self.read_market()
-
+            """
             # Fair-value operations
             if data["type"] == "fill" and data["order_id"] in self.open_bonds:
                 if data["dir"] == "BUY":
@@ -79,7 +86,6 @@ class Bot:
             elif data["type"] == "out" and data["order_id"] in self.open_bonds:
                 self.open_bonds.remove(data["order_id"])
 
-            # market manipulation -- ridiculous orders
             # ADR Arbitrage
             if data["type"] == "trade" and data["symbol"] == "VALBZ":
                 self.adr_queue.append(data["price"])
@@ -117,6 +123,31 @@ class Bot:
                     self.order_id += 1
             elif data["type"] == "out" and data["order_id"] in self.open_bonds:
                 self.open_bonds.remove(data["order_id"])
+            """
+            # ETF Arbitrage
+            if data["type"] == "trade" and data["symbol"] in self.etf_queues:
+                stock = data["symbol"]
+                self.etf_queues[stock].append(data["price"])
+                self.etf_prices[stock] = sum(self.etf_queues[stock]) // len(self.etf_queues[stock])
+                if len(self.etf_prices) == 3:
+                    self.xlf_price = (3000 + 2 * self.etf_prices["GS"] +
+                        3 * self.etf_prices["MS"] + 2 * self.etf_prices["WFC"]) // 10
+                    if not len(self.open_etfs) or \
+                        abs(self.xlf_price - self.etf_order_price) >= 10:
+                        self.etf_order_price = self.xlf_price
+                        for open_order in self.open_etfs:
+                            self.send_action({"type": "cancel", "order_id": open_order})
+                        self.send_action({"type": "add", "order_id": self.order_id,
+                                          "symbol": "XLF", "dir": "BUY", "price": self.xlf_price - 30,
+                                          "size": 50})
+                        self.open_etfs.add(self.order_id)
+                        self.order_id += 1
+
+                        self.send_action({"type": "add", "order_id": self.order_id,
+                                          "symbol": "XLF", "dir": "SELL", "price": self.xlf_price + 30,
+                                          "size": 50})
+                        self.open_etfs.add(self.order_id)
+                        self.order_id += 1
 
     def make_connection(self, hostname, port):
         """
