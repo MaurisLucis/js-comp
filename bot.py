@@ -46,7 +46,7 @@ class Bot:
         print("Hello received from server: ", self.read_market())
 
     def check_market(self):
-        """
+
         self.send_action({"type": "add", "order_id": self.order_id,
                           "symbol": "BOND", "dir": "BUY", "price": 1000 - self.fair_value_threshold,
                           "size": 50})
@@ -58,10 +58,10 @@ class Bot:
                           "size": 50})
         self.open_bonds.add(self.order_id)
         self.order_id += 1
-        """
+
         while True:
             data = self.read_market()
-            """
+
             # Fair-value operations
             if data["type"] == "fill" and data["order_id"] in self.open_bonds:
                 if data["dir"] == "BUY":
@@ -78,7 +78,8 @@ class Bot:
                     self.order_id += 1
             elif data["type"] == "out" and data["order_id"] in self.open_bonds:
                 self.open_bonds.remove(data["order_id"])
-            """
+
+            # market manipulation -- ridiculous orders
             # ADR Arbitrage
             if data["type"] == "trade" and data["symbol"] == "VALBZ":
                 self.adr_queue.append(data["price"])
@@ -110,7 +111,7 @@ class Bot:
                     self.order_id += 1
                 elif data["dir"] == "SELL":
                     self.send_action({"type": "add", "order_id": self.order_id,
-                                      "symbol": "VALE", "dir": "SELL", "price": self.adr_price,
+                                      "symbol": "VALE", "dir": "SELL", "price": self.adr_price + 10,
                                       "size": data["size"]})
                     self.open_bonds.add(self.order_id)
                     self.order_id += 1
@@ -146,9 +147,11 @@ class Bot:
         """
         try:
             data = self.stream.readline()
+            if data is None:
+                return self.read_market()
             return json.loads(data)
         except json.JSONDecodeError:
             print("Expected JSON but got {}.".format(data))
 
 
-Bot(False)
+Bot(True)
