@@ -119,10 +119,10 @@ class Bot:
                     self.send_action({"type": "add", "order_id": self.order_id,
                                       "symbol": "VALE", "dir": "SELL", "price": self.adr_price + 10,
                                       "size": data["size"]})
-                    self.open_bonds.add(self.order_id)
+                    self.open_adrs.add(self.order_id)
                     self.order_id += 1
-            elif data["type"] == "out" and data["order_id"] in self.open_bonds:
-                self.open_bonds.remove(data["order_id"])
+            elif data["type"] == "out" and data["order_id"] in self.open_adrs:
+                self.open_adrs.remove(data["order_id"])
 
             # ETF Arbitrage
             if data["type"] == "trade" and data["symbol"] in self.etf_queues:
@@ -137,6 +137,7 @@ class Bot:
                         self.etf_order_price = self.xlf_price
                         for open_order in self.open_etfs:
                             self.send_action({"type": "cancel", "order_id": open_order})
+
                         self.send_action({"type": "add", "order_id": self.order_id,
                                           "symbol": "XLF", "dir": "BUY", "price": self.xlf_price - 30,
                                           "size": 50})
@@ -148,6 +149,23 @@ class Bot:
                                           "size": 50})
                         self.open_etfs.add(self.order_id)
                         self.order_id += 1
+
+            if data["type"] == "fill" and data["order_id"] in self.open_etfs:
+                if data["dir"] == "BUY":
+                    self.send_action({"type": "add", "order_id": self.order_id,
+                                      "symbol": "XLF", "dir": "BUY", "price": self.xlf_price - 30,
+                                      "size": data["size"]})
+                    self.open_etfs.add(self.order_id)
+                    self.order_id += 1
+                elif data["dir"] == "SELL":
+                    self.send_action({"type": "add", "order_id": self.order_id,
+                                      "symbol": "XLF", "dir": "SELL", "price": self.xlf_price + 30,
+                                      "size": data["size"]})
+                    self.open_etfs.add(self.order_id)
+                    self.order_id += 1
+            elif data["type"] == "out" and data["order_id"] in self.open_etfs:
+                self.open_etfs.remove(data["order_id"])
+
 
     def make_connection(self, hostname, port):
         """
