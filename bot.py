@@ -1,5 +1,6 @@
 import socket
 import json
+import time
 
 
 class Bot:
@@ -12,15 +13,44 @@ class Bot:
         print("=-=-= Starting trading bot! =-=-=\n")
         self.team_name = "TEAMSTOCKERS"
         self.test_mode = test
+        self.order_id = 0
+        self.fair_value_threshold = 1
         if test:
             print("=-=-= Test mode activated. Getting hello from exchange. =-=-= \n")
             self.test()
-        pass
+        else:
+            self.launch()
 
     def test(self):
         self.make_connection("test-exch-", 25000)
         print("=-=-= Connection made! =-=-=")
         print(self.read_market())
+
+    def launch(self):
+        self.make_connection("production", 2500)
+        self.hello()
+        self.check_market()
+
+    def hello(self):
+        self.send_action({"type": "hello", "team": "TEAMSTOCKERS"})
+        print(self.read_market())
+
+    def check_market(self):
+        # Fair-value operations
+        while True:
+            data = self.read_market()
+            if data["type"] == "trade" and data["symbol"] == "BOND":
+                if data["price"] <= 1000 - self.fair_value_threshold:
+                    self.send_action({"type": "add", "order_id": self.order_id,
+                                      "symbol":"BOND", "dir":"BUY", "price": data["price"],
+                                      "size": 10})
+                    self.order_id += 1
+                elif data["price"] >= 1000 + self.fair_value_threshold:
+                    self.send_action({"type": "add", "order_id": self.order_id,
+                                      "symbol": "BOND", "dir": "SELL", "price": data["price"],
+                                      "size": 10})
+            time.sleep(1)
+
 
 
     def make_connection(self, hostname, port):
