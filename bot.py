@@ -24,32 +24,36 @@ class Bot:
     def test(self):
         self.make_connection("test-exch-", 25000)
         print("=-=-= Connection made! =-=-=")
-        print(self.read_market())
+        self.hello()
+        self.check_market()
 
     def launch(self):
-        self.make_connection("production", 2500)
+        self.make_connection("production", 25000)
         self.hello()
         self.check_market()
 
     def hello(self):
         self.send_action({"type": "hello", "team": "TEAMSTOCKERS"})
-        print(self.read_market())
+        print("Hello received from server: ", self.read_market())
 
     def check_market(self):
         # Fair-value operations
-        while True:
-            data = self.read_market()
-            if data["type"] == "trade" and data["symbol"] == "BOND":
-                if data["price"] <= 1000 - self.fair_value_threshold:
-                    self.send_action({"type": "add", "order_id": self.order_id,
-                                      "symbol":"BOND", "dir":"BUY", "price": data["price"],
-                                      "size": 10})
-                    self.order_id += 1
-                elif data["price"] >= 1000 + self.fair_value_threshold:
-                    self.send_action({"type": "add", "order_id": self.order_id,
-                                      "symbol": "BOND", "dir": "SELL", "price": data["price"],
-                                      "size": 10})
-            time.sleep(1)
+        try:
+            while True:
+                data = self.read_market()
+                if data["type"] == "trade" and data["symbol"] == "BOND":
+                    if data["price"] <= 1000 - self.fair_value_threshold:
+                        self.send_action({"type": "add", "order_id": self.order_id,
+                                          "symbol":"BOND", "dir":"BUY", "price": data["price"],
+                                          "size": 10})
+                        self.order_id += 1
+                    elif data["price"] >= 1000 + self.fair_value_threshold:
+                        self.send_action({"type": "add", "order_id": self.order_id,
+                                          "symbol": "BOND", "dir": "SELL", "price": data["price"],
+                                          "size": 10})
+                time.sleep(1)
+        except:
+            self.test()
 
 
 
@@ -69,7 +73,7 @@ class Bot:
 
     def send_action(self, action):
         try:
-            json.dump(self.stream, action)
+            json.dump(action, self.stream)
             self.stream.write('\n')
         except ValueError:
             print("Invalid JSON string provided.")
