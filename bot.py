@@ -34,6 +34,8 @@ class Bot:
                            "WFC": queue([], 10)}
         self.etf_prices = {}
         self.open_etfs = set()
+        self.etf_count = 0
+        self.ind_count = [0] * 3
 
         if test:
             print("=-=-= Test mode activated. Getting hello from exchange. =-=-= \n")
@@ -197,32 +199,87 @@ class Bot:
                         self.send_action({"type": "cancel", "order_id": open_order})
 
                     self.send_action({"type": "add", "order_id": self.order_id,
-                                      "symbol": "XLF", "dir": "BUY", "price": self.xlf_price - 30,
+                                      "symbol": "XLF", "dir": "BUY", "price": self.xlf_price - 25,
                                       "size": 50})
                     self.open_etfs.add(self.order_id)
                     self.order_id += 1
 
                     self.send_action({"type": "add", "order_id": self.order_id,
-                                      "symbol": "XLF", "dir": "SELL", "price": self.xlf_price + 30,
+                                      "symbol": "XLF", "dir": "SELL", "price": self.xlf_price + 25,
                                       "size": 50})
                     self.open_etfs.add(self.order_id)
                     self.order_id += 1
 
         if data["type"] == "fill" and data["order_id"] in self.open_etfs:
             if data["dir"] == "BUY":
-                self.send_action({"type": "add", "order_id": self.order_id,
-                                  "symbol": "XLF", "dir": "BUY", "price": self.xlf_price - 30,
-                                  "size": data["size"]})
-                self.open_etfs.add(self.order_id)
-                self.order_id += 1
+                if data["symbol"] == "XLF":
+                    self.send_action({"type": "add", "order_id": self.order_id,
+                                      "symbol": "XLF", "dir": "BUY", "price": self.xlf_price - 25,
+                                      "size": data["size"]})
+                    self.open_etfs.add(self.order_id)
+                    self.etf_count += data["size"]
+                    self.order_id += 1
+
+                    self.hedge_etf("SELL", 1)
+                elif data["symbol"] == "GS":
+                    self.ind_count[0] -= data["size"]
+                elif data["symbol"] == "MS":
+                    self.ind_count[1] -= data["size"]
+                elif data["symbol"] == "WFC":
+                    self.ind_count[2] -= data["size"]
+
+                if self.etf_count >= 30 and self.ind_count[0] >= 6 and \
+                    self.ind_count[1] >= 9 and self.ind_count[2] >= 6:
+                    self.send_action({"type": "convert", "order_id": self.order_id,
+                                  "symbol": "XLF", "dir": "SELL", "price": self.xlf_price + 25,
+                                  "size": 30})
+
             elif data["dir"] == "SELL":
-                self.send_action({"type": "add", "order_id": self.order_id,
-                                  "symbol": "XLF", "dir": "SELL", "price": self.xlf_price + 30,
-                                  "size": data["size"]})
-                self.open_etfs.add(self.order_id)
-                self.order_id += 1
+                if data["symbol"] == "XLF":
+                    self.send_action({"type": "add", "order_id": self.order_id,
+                                      "symbol": "XLF", "dir": "SELL", "price": self.xlf_price + 25,
+                                      "size": data["size"]})
+                    self.open_etfs.add(self.order_id)
+                    self.etf_count -= data["size"]
+                    self.order_id += 1
+
+                    self.hedge_etf("BUY", -1)
+                elif data["symbol"] == "GS":
+                    self.ind_count[0] += data["size"]
+                elif data["symbol"] == "MS":
+                    self.ind_count[1] += data["size"]
+                elif data["symbol"] == "WFC":
+                    self.ind_count[2] += data["size"]
+
+                if self.etf_count <= -30 and self.ind_count[0] <= -6 and \
+                        self.ind_count[1] <= -9 and self.ind_count[2] <= -6:
+                    self.send_action({"type": "convert", "order_id": self.order_id,
+                                      "symbol": "XLF", "dir": "BUY", "price": self.xlf_price - 25,
+                                      "size": 30})
+
+
+
         elif data["type"] == "out" and data["order_id"] in self.open_etfs:
             self.open_etfs.remove(data["order_id"])
+
+    def hedge_etf(self, oper, fac):
+        self.send_action({"type": "add", "order_id": self.order_id,
+                          "symbol": "GS", "dir": oper, "price": self.etf_prices["GS"] + (30 * fac),
+                          "size": 2})
+        self.open_etfs.add(self.order_id)
+        self.order_id += 1
+        self.send_action({"type": "add", "order_id": self.order_id,
+                          "symbol": "MS", "dir": oper, "price": self.etf_prices["MS"] + (30 * fac),
+                          "size": 3})
+        self.open_etfs.add(self.order_id)
+        self.order_id += 1
+        self.send_action({"type": "add", "order_id": self.order_id,
+                          "symbol": "WFC", "dir": oper, "price": self.etf_prices["WFC"] + (30 * fac),
+                          "size": 2})
+        self.open_etfs.add(self.order_id)
+        self.order_id += 1
+
+
 
     def make_connection(self, hostname, port):
         """
