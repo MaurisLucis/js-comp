@@ -43,7 +43,7 @@ class Bot:
         # Tracks open bond orders we've sent to the market.
         self.open_bonds = set()
 
-        # -- ADR Arbitrage -- #
+        # -- ADR Trading -- #
         # Last 10 prices VALBZ was traded at
         self.adr_queue = queue([], 10)
         # Tracks open ADR-related orders we've sent to the market.
@@ -55,7 +55,7 @@ class Bot:
         # Quantity of VALBZ owned.
         self.adr_z_count = 0
 
-        # -- ETF Arbitrage -- #
+        # -- ETF Trading -- #
         # Dictionary mapping XLF components to queues representing their prices;
         # each queue tracks the last 10 prices at which its corresponding stock was traded at.
         self.etf_queues = {"GS": queue([], 10),
@@ -260,7 +260,7 @@ class Bot:
             self.open_bonds.remove(data["order_id"])
 
     def etf_trading(self, data):
-        # Like with ADR arbitrage, check to see if any XLF components were traded
+        # Like with ADR trading, check to see if any XLF components were traded
         # recently and use this information to update the component's price estimate.
         if data["type"] == "trade" and data["symbol"] in self.etf_queues:
             stock = data["symbol"]
