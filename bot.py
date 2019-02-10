@@ -140,21 +140,21 @@ class Bot:
                     self.adr_count -= data["size"]
 
                     self.send_action({"type": "add", "order_id": self.order_id,
-                                      "symbol": "VALBZ", "dir": "BUY", "price": self.adr_price + 10,
+                                      "symbol": "VALBZ", "dir": "BUY", "price": self.adr_price - 10,
                                       "size": data["size"]})
                     self.open_adrs.add(self.order_id)
                     self.order_id += 1
 
                 if self.adr_count == 10 and self.adr_z_count == -10:
                     self.send_action({"type": "convert", "order_id": self.order_id,
-                                      "symbol": "VALE", "dir": "SELL", "price": self.adr_price + 10,
+                                      "symbol": "VALE", "dir": "SELL", "price": self.adr_price,
                                       "size": data["size"]})
                     self.open_adr_converts[self.order_id] = "SELL"
                     self.order_id += 1
 
                 if self.adr_count == -10 and self.adr_z_count == 10:
                     self.send_action({"type": "convert", "order_id": self.order_id,
-                                      "symbol": "VALE", "dir": "BUY", "price": self.adr_price + 10,
+                                      "symbol": "VALE", "dir": "BUY", "price": self.adr_price,
                                       "size": data["size"]})
                     self.open_adr_converts[self.order_id] = "BUY"
                     self.order_id += 1
