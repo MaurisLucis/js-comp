@@ -24,6 +24,10 @@ class Bot:
         # ADR Arbitrage
         self.adr_queue = queue([], 10)
         self.open_adrs = set()
+        self.open_adr_converts = {}
+        self.adr_count = 0
+        self.adr_z_count = 0
+        self.adr_left = {}
 
         # ETF Arbitrage
         self.etf_queues = {"GS": queue([], 10),
@@ -47,18 +51,14 @@ class Bot:
     def launch(self):
         self.make_connection("production", 25000)
         self.hello()
-        try:
-            self.check_market()
-        except socket.error:
-            time.sleep(1)
-            self.check_market()
+        self.check_market()
 
     def hello(self):
         self.send_action({"type": "hello", "team": "TEAMSTOCKERS"})
         print("Hello received from server: ", self.read_market())
 
     def check_market(self):
-
+        """
         self.send_action({"type": "add", "order_id": self.order_id,
                           "symbol": "BOND", "dir": "BUY", "price": 1000 - self.fair_value_threshold,
                           "size": 50})
@@ -70,10 +70,10 @@ class Bot:
                           "size": 50})
         self.open_bonds.add(self.order_id)
         self.order_id += 1
-
+        """
         while True:
             data = self.read_market()
-
+            """
             # Fair-value operations
             if data["type"] == "fill" and data["order_id"] in self.open_bonds:
                 if data["dir"] == "BUY":
@@ -90,7 +90,7 @@ class Bot:
                     self.order_id += 1
             elif data["type"] == "out" and data["order_id"] in self.open_bonds:
                 self.open_bonds.remove(data["order_id"])
-
+            """
             # ADR Arbitrage
             if data["type"] == "trade" and data["symbol"] == "VALBZ":
                 self.adr_queue.append(data["price"])
@@ -114,21 +114,65 @@ class Bot:
                     self.order_id += 1
 
             if data["type"] == "fill" and data["order_id"] in self.open_adrs:
-                if data["dir"] == "BUY":
+                if data["dir"] == "BUY" and data["symbol"] == "VALE":
                     self.send_action({"type": "add", "order_id": self.order_id,
                                       "symbol": "VALE", "dir": "BUY", "price": self.adr_price - 10,
                                       "size": data["size"]})
                     self.open_adrs.add(self.order_id)
                     self.order_id += 1
-                elif data["dir"] == "SELL":
+                    self.adr_count += data["size"]
+
+                    self.send_action({"type": "add", "order_id": self.order_id,
+                                      "symbol": "VALBZ", "dir": "SELL", "price": self.adr_price + 10,
+                                      "size": data["size"]})
+                    self.open_adrs.add(self.order_id)
+                    self.order_id += 1
+
+                elif data["dir"] == "BUY" and data["symbol"] == "VALBZ":
+                    self.adr_z_count += data["size"]
+
+                elif data["dir"] == "SELL" and data["symbol"] == "VALE":
                     self.send_action({"type": "add", "order_id": self.order_id,
                                       "symbol": "VALE", "dir": "SELL", "price": self.adr_price + 10,
                                       "size": data["size"]})
                     self.open_adrs.add(self.order_id)
                     self.order_id += 1
+                    self.adr_count -= data["size"]
+
+                    self.send_action({"type": "add", "order_id": self.order_id,
+                                      "symbol": "VALBZ", "dir": "BUY", "price": self.adr_price + 10,
+                                      "size": data["size"]})
+                    self.open_adrs.add(self.order_id)
+                    self.order_id += 1
+
+                if self.adr_count == 10 and self.adr_z_count == -10:
+                    self.send_action({"type": "convert", "order_id": self.order_id,
+                                      "symbol": "VALE", "dir": "SELL", "price": self.adr_price + 10,
+                                      "size": data["size"]})
+                    self.open_adr_converts[self.order_id] = "SELL"
+                    self.order_id += 1
+
+                if self.adr_count == -10 and self.adr_z_count == 10:
+                    self.send_action({"type": "convert", "order_id": self.order_id,
+                                      "symbol": "VALE", "dir": "BUY", "price": self.adr_price + 10,
+                                      "size": data["size"]})
+                    self.open_adr_converts[self.order_id] = "BUY"
+                    self.order_id += 1
+
+            if data["type"] == "fill" and data["order_id"] in self.open_adr_converts:
+                if self.open_adr_converts[data["order_id"]] == "BUY":
+                    self.adr_count += data["size"]
+                    self.adr_z_count -= data["size"]
+                else:
+                    self.adr_count -= data["size"]
+                    self.adr_z_count += data["size"]
+
             elif data["type"] == "out" and data["order_id"] in self.open_adrs:
                 self.open_adrs.remove(data["order_id"])
 
+            elif data["type"] == "out" and data["order_id"] in self.adr_left:
+                self.send_action({"type": ["BUY", "SELL"]})
+            """
             # ETF Arbitrage
             if data["type"] == "trade" and data["symbol"] in self.etf_queues:
                 stock = data["symbol"]
@@ -170,7 +214,7 @@ class Bot:
                     self.order_id += 1
             elif data["type"] == "out" and data["order_id"] in self.open_etfs:
                 self.open_etfs.remove(data["order_id"])
-
+            """
 
     def make_connection(self, hostname, port):
         """

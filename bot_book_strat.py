@@ -22,7 +22,9 @@ class Bot:
         self.open_bonds = set()
 
         # ADR Arbitrage
-        self.adr_queue = queue([], 10)
+        # self.adr_queue = queue([], 10)
+        self.adr_bqueue = queue([], 10)
+        self.adr_squeue = queue([], 10)
         self.open_adrs = set()
 
         # ETF Arbitrage
@@ -93,14 +95,14 @@ class Bot:
             """
             # ADR Arbitrage
             if data["type"] == "book" and data["symbol"] == "VALBZ":
-                price_data = []
                 if "buy" in data:
-                    buys = sort(data["buy"], key=lambda x: x[0])[:5]
+                    buys = sorted([i[0] for i in data["buy"]])
                     price_data.append(sum(buys) // len(buys))
                 if "sell" in data:
-                    sells = sort(data["sell"], key=lambda x: x[0])[:-5]
+                    sells = sorted([i[0] for i in data["sell"]], reverse=True)[:5]
                     price_data.append(sum(sells) // len(sells))
-                self.adr_queue.append(sum(price_data) // len(price_data))
+                self.adr_price = sum(price_data) // len(price_data)
+                self.adr_queue.append(self.adr_price)
 
                 if not len(self.open_adrs) or abs(self.adr_price - self.adr_order_price) >= 5:
                     self.adr_order_price = self.adr_price
