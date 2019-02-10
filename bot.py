@@ -1,4 +1,3 @@
-import time
 from collections import deque as queue
 import socket
 import json
@@ -58,7 +57,102 @@ class Bot:
         print("Hello received from server: ", self.read_market())
 
     def check_market(self):
-        """
+        self.bond_initialize()
+        while True:
+            data = self.read_market()
+
+            # Fair-value operations
+            self.bond_trading(data)
+            
+            # ADR Arbitrage
+            self.adr_trading(data)
+
+            # ETF Arbitrage
+            self.etf_trading(data)
+
+    def adr_trading(self, data):
+        if data["type"] == "trade" and data["symbol"] == "VALBZ":
+            self.adr_queue.append(data["price"])
+            self.adr_price = sum(self.adr_queue) // len(self.adr_queue)
+
+            if not len(self.open_adrs) or abs(self.adr_price - self.adr_order_price) >= 5:
+                self.adr_order_price = self.adr_price
+                for open_order in self.open_adrs:
+                    self.send_action({"type": "cancel", "order_id": open_order})
+
+                self.send_action({"type": "add", "order_id": self.order_id,
+                                  "symbol": "VALE", "dir": "BUY", "price": self.adr_price - 10,
+                                  "size": 5})
+                self.open_adrs.add(self.order_id)
+                self.order_id += 1
+
+                self.send_action({"type": "add", "order_id": self.order_id,
+                                  "symbol": "VALE", "dir": "SELL", "price": self.adr_price + 10,
+                                  "size": 5})
+                self.open_adrs.add(self.order_id)
+                self.order_id += 1
+
+        if data["type"] == "fill" and data["order_id"] in self.open_adrs:
+            if data["dir"] == "BUY" and data["symbol"] == "VALE":
+                self.send_action({"type": "add", "order_id": self.order_id,
+                                  "symbol": "VALE", "dir": "BUY", "price": self.adr_price - 10,
+                                  "size": data["size"]})
+                self.open_adrs.add(self.order_id)
+                self.order_id += 1
+                self.adr_count += data["size"]
+
+                self.send_action({"type": "add", "order_id": self.order_id,
+                                  "symbol": "VALBZ", "dir": "SELL", "price": self.adr_price + 10,
+                                  "size": data["size"]})
+                self.open_adrs.add(self.order_id)
+                self.order_id += 1
+
+            elif data["dir"] == "BUY" and data["symbol"] == "VALBZ":
+                self.adr_z_count += data["size"]
+
+            elif data["dir"] == "SELL" and data["symbol"] == "VALE":
+                self.send_action({"type": "add", "order_id": self.order_id,
+                                  "symbol": "VALE", "dir": "SELL", "price": self.adr_price + 10,
+                                  "size": data["size"]})
+                self.open_adrs.add(self.order_id)
+                self.order_id += 1
+                self.adr_count -= data["size"]
+
+                self.send_action({"type": "add", "order_id": self.order_id,
+                                  "symbol": "VALBZ", "dir": "BUY", "price": self.adr_price - 10,
+                                  "size": data["size"]})
+                self.open_adrs.add(self.order_id)
+                self.order_id += 1
+
+            if self.adr_count == 10 and self.adr_z_count == -10:
+                self.send_action({"type": "convert", "order_id": self.order_id,
+                                  "symbol": "VALE", "dir": "SELL", "price": self.adr_price,
+                                  "size": data["size"]})
+                self.open_adr_converts[self.order_id] = "SELL"
+                self.order_id += 1
+
+            if self.adr_count == -10 and self.adr_z_count == 10:
+                self.send_action({"type": "convert", "order_id": self.order_id,
+                                  "symbol": "VALE", "dir": "BUY", "price": self.adr_price,
+                                  "size": data["size"]})
+                self.open_adr_converts[self.order_id] = "BUY"
+                self.order_id += 1
+
+        if data["type"] == "fill" and data["order_id"] in self.open_adr_converts:
+            if self.open_adr_converts[data["order_id"]] == "BUY":
+                self.adr_count += data["size"]
+                self.adr_z_count -= data["size"]
+            else:
+                self.adr_count -= data["size"]
+                self.adr_z_count += data["size"]
+
+        elif data["type"] == "out" and data["order_id"] in self.open_adrs:
+            self.open_adrs.remove(data["order_id"])
+
+        elif data["type"] == "out" and data["order_id"] in self.adr_left:
+            self.send_action({"type": ["BUY", "SELL"]})
+
+    def bond_initialize(self):
         self.send_action({"type": "add", "order_id": self.order_id,
                           "symbol": "BOND", "dir": "BUY", "price": 1000 - self.fair_value_threshold,
                           "size": 50})
@@ -70,151 +164,65 @@ class Bot:
                           "size": 50})
         self.open_bonds.add(self.order_id)
         self.order_id += 1
-        """
-        while True:
-            data = self.read_market()
-            """
-            # Fair-value operations
-            if data["type"] == "fill" and data["order_id"] in self.open_bonds:
-                if data["dir"] == "BUY":
-                    self.send_action({"type": "add", "order_id": self.order_id,
-                                      "symbol": "BOND", "dir": "BUY", "price": 1000 - self.fair_value_threshold,
-                                      "size": data["size"]})
-                    self.open_bonds.add(self.order_id)
-                    self.order_id += 1
-                elif data["dir"] == "SELL":
-                    self.send_action({"type": "add", "order_id": self.order_id,
-                                      "symbol": "BOND", "dir": "SELL", "price": 1000 + self.fair_value_threshold,
-                                      "size": data["size"]})
-                    self.open_bonds.add(self.order_id)
-                    self.order_id += 1
-            elif data["type"] == "out" and data["order_id"] in self.open_bonds:
-                self.open_bonds.remove(data["order_id"])
-            """
-            # ADR Arbitrage
-            if data["type"] == "trade" and data["symbol"] == "VALBZ":
-                self.adr_queue.append(data["price"])
-                self.adr_price = sum(self.adr_queue) // len(self.adr_queue)
 
-                if not len(self.open_adrs) or abs(self.adr_price - self.adr_order_price) >= 5:
-                    self.adr_order_price = self.adr_price
-                    for open_order in self.open_adrs:
+    def bond_trading(self, data):
+        if data["type"] == "fill" and data["order_id"] in self.open_bonds:
+            if data["dir"] == "BUY":
+                self.send_action({"type": "add", "order_id": self.order_id,
+                                  "symbol": "BOND", "dir": "BUY", "price": 1000 - self.fair_value_threshold,
+                                  "size": data["size"]})
+                self.open_bonds.add(self.order_id)
+                self.order_id += 1
+            elif data["dir"] == "SELL":
+                self.send_action({"type": "add", "order_id": self.order_id,
+                                  "symbol": "BOND", "dir": "SELL", "price": 1000 + self.fair_value_threshold,
+                                  "size": data["size"]})
+                self.open_bonds.add(self.order_id)
+                self.order_id += 1
+        elif data["type"] == "out" and data["order_id"] in self.open_bonds:
+            self.open_bonds.remove(data["order_id"])
+
+    def etf_trading(self, data):
+        if data["type"] == "trade" and data["symbol"] in self.etf_queues:
+            stock = data["symbol"]
+            self.etf_queues[stock].append(data["price"])
+            self.etf_prices[stock] = sum(self.etf_queues[stock]) // len(self.etf_queues[stock])
+            if len(self.etf_prices) == 3:
+                self.xlf_price = (3000 + 2 * self.etf_prices["GS"] +
+                                  3 * self.etf_prices["MS"] + 2 * self.etf_prices["WFC"]) // 10
+                if not len(self.open_etfs) or \
+                        abs(self.xlf_price - self.etf_order_price) >= 10:
+                    self.etf_order_price = self.xlf_price
+                    for open_order in self.open_etfs:
                         self.send_action({"type": "cancel", "order_id": open_order})
 
                     self.send_action({"type": "add", "order_id": self.order_id,
-                                      "symbol": "VALE", "dir": "BUY", "price": self.adr_price - 10,
-                                      "size": 5})
-                    self.open_adrs.add(self.order_id)
-                    self.order_id += 1
-
-                    self.send_action({"type": "add", "order_id": self.order_id,
-                                      "symbol": "VALE", "dir": "SELL", "price": self.adr_price + 10,
-                                      "size": 5})
-                    self.open_adrs.add(self.order_id)
-                    self.order_id += 1
-
-            if data["type"] == "fill" and data["order_id"] in self.open_adrs:
-                if data["dir"] == "BUY" and data["symbol"] == "VALE":
-                    self.send_action({"type": "add", "order_id": self.order_id,
-                                      "symbol": "VALE", "dir": "BUY", "price": self.adr_price - 10,
-                                      "size": data["size"]})
-                    self.open_adrs.add(self.order_id)
-                    self.order_id += 1
-                    self.adr_count += data["size"]
-
-                    self.send_action({"type": "add", "order_id": self.order_id,
-                                      "symbol": "VALBZ", "dir": "SELL", "price": self.adr_price + 10,
-                                      "size": data["size"]})
-                    self.open_adrs.add(self.order_id)
-                    self.order_id += 1
-
-                elif data["dir"] == "BUY" and data["symbol"] == "VALBZ":
-                    self.adr_z_count += data["size"]
-
-                elif data["dir"] == "SELL" and data["symbol"] == "VALE":
-                    self.send_action({"type": "add", "order_id": self.order_id,
-                                      "symbol": "VALE", "dir": "SELL", "price": self.adr_price + 10,
-                                      "size": data["size"]})
-                    self.open_adrs.add(self.order_id)
-                    self.order_id += 1
-                    self.adr_count -= data["size"]
-
-                    self.send_action({"type": "add", "order_id": self.order_id,
-                                      "symbol": "VALBZ", "dir": "BUY", "price": self.adr_price - 10,
-                                      "size": data["size"]})
-                    self.open_adrs.add(self.order_id)
-                    self.order_id += 1
-
-                if self.adr_count == 10 and self.adr_z_count == -10:
-                    self.send_action({"type": "convert", "order_id": self.order_id,
-                                      "symbol": "VALE", "dir": "SELL", "price": self.adr_price,
-                                      "size": data["size"]})
-                    self.open_adr_converts[self.order_id] = "SELL"
-                    self.order_id += 1
-
-                if self.adr_count == -10 and self.adr_z_count == 10:
-                    self.send_action({"type": "convert", "order_id": self.order_id,
-                                      "symbol": "VALE", "dir": "BUY", "price": self.adr_price,
-                                      "size": data["size"]})
-                    self.open_adr_converts[self.order_id] = "BUY"
-                    self.order_id += 1
-
-            if data["type"] == "fill" and data["order_id"] in self.open_adr_converts:
-                if self.open_adr_converts[data["order_id"]] == "BUY":
-                    self.adr_count += data["size"]
-                    self.adr_z_count -= data["size"]
-                else:
-                    self.adr_count -= data["size"]
-                    self.adr_z_count += data["size"]
-
-            elif data["type"] == "out" and data["order_id"] in self.open_adrs:
-                self.open_adrs.remove(data["order_id"])
-
-            elif data["type"] == "out" and data["order_id"] in self.adr_left:
-                self.send_action({"type": ["BUY", "SELL"]})
-            """
-            # ETF Arbitrage
-            if data["type"] == "trade" and data["symbol"] in self.etf_queues:
-                stock = data["symbol"]
-                self.etf_queues[stock].append(data["price"])
-                self.etf_prices[stock] = sum(self.etf_queues[stock]) // len(self.etf_queues[stock])
-                if len(self.etf_prices) == 3:
-                    self.xlf_price = (3000 + 2 * self.etf_prices["GS"] +
-                        3 * self.etf_prices["MS"] + 2 * self.etf_prices["WFC"]) // 10
-                    if not len(self.open_etfs) or \
-                        abs(self.xlf_price - self.etf_order_price) >= 10:
-                        self.etf_order_price = self.xlf_price
-                        for open_order in self.open_etfs:
-                            self.send_action({"type": "cancel", "order_id": open_order})
-
-                        self.send_action({"type": "add", "order_id": self.order_id,
-                                          "symbol": "XLF", "dir": "BUY", "price": self.xlf_price - 30,
-                                          "size": 50})
-                        self.open_etfs.add(self.order_id)
-                        self.order_id += 1
-
-                        self.send_action({"type": "add", "order_id": self.order_id,
-                                          "symbol": "XLF", "dir": "SELL", "price": self.xlf_price + 30,
-                                          "size": 50})
-                        self.open_etfs.add(self.order_id)
-                        self.order_id += 1
-
-            if data["type"] == "fill" and data["order_id"] in self.open_etfs:
-                if data["dir"] == "BUY":
-                    self.send_action({"type": "add", "order_id": self.order_id,
                                       "symbol": "XLF", "dir": "BUY", "price": self.xlf_price - 30,
-                                      "size": data["size"]})
+                                      "size": 50})
                     self.open_etfs.add(self.order_id)
                     self.order_id += 1
-                elif data["dir"] == "SELL":
+
                     self.send_action({"type": "add", "order_id": self.order_id,
                                       "symbol": "XLF", "dir": "SELL", "price": self.xlf_price + 30,
-                                      "size": data["size"]})
+                                      "size": 50})
                     self.open_etfs.add(self.order_id)
                     self.order_id += 1
-            elif data["type"] == "out" and data["order_id"] in self.open_etfs:
-                self.open_etfs.remove(data["order_id"])
-            """
+
+        if data["type"] == "fill" and data["order_id"] in self.open_etfs:
+            if data["dir"] == "BUY":
+                self.send_action({"type": "add", "order_id": self.order_id,
+                                  "symbol": "XLF", "dir": "BUY", "price": self.xlf_price - 30,
+                                  "size": data["size"]})
+                self.open_etfs.add(self.order_id)
+                self.order_id += 1
+            elif data["dir"] == "SELL":
+                self.send_action({"type": "add", "order_id": self.order_id,
+                                  "symbol": "XLF", "dir": "SELL", "price": self.xlf_price + 30,
+                                  "size": data["size"]})
+                self.open_etfs.add(self.order_id)
+                self.order_id += 1
+        elif data["type"] == "out" and data["order_id"] in self.open_etfs:
+            self.open_etfs.remove(data["order_id"])
 
     def make_connection(self, hostname, port):
         """
